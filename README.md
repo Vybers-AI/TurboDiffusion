@@ -96,7 +96,7 @@ pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
     wget https://huggingface.co/TurboDiffusion/TurboWan2.1-T2V-1.3B-480P/resolve/main/TurboWan2.1-T2V-1.3B-480P-quant.pth
     ```
     
-    For GPUs with more than 40GB of GPU memory, e.g., H100, we recommend using the unquantized checkpoint (without `-quant`) and removing `--quant_linear` from the command.
+    For GPUs with more than 40GB of GPU memory, **e.g., H100, we recommend using the unquantized checkpoint (without `-quant`) and removing `--quant_linear` from the command.**
 
     For the I2V model, download both the high-noise and low-noise checkpoints:
     ```bash
