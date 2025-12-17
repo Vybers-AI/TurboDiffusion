@@ -66,7 +66,8 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     log.info(f"Computing embedding for prompt: {args.prompt}")
-    text_emb = get_umt5_embedding(checkpoint_path=args.text_encoder_path, prompts=args.prompt).to(**tensor_kwargs)
+    with torch.no_grad():
+        text_emb = get_umt5_embedding(checkpoint_path=args.text_encoder_path, prompts=args.prompt).to(**tensor_kwargs)
     clear_umt5_memory()
 
     log.info(f"Loading DiT models.")
@@ -124,6 +125,9 @@ if __name__ == "__main__":
             [image_tensor.unsqueeze(2), torch.zeros(1, 3, F - 1, h, w, device=image_tensor.device)], dim=2
         )  # -> B, C, T, H, W
         encoded_latents = tokenizer.encode(frames_to_encode)  # -> B, C_lat, T_lat, H_lat, W_lat
+        
+        del frames_to_encode
+        torch.cuda.empty_cache()
 
     msk = torch.zeros(1, 4, lat_t, lat_h, lat_w, device=tensor_kwargs["device"], dtype=tensor_kwargs["dtype"])
     msk[:, :, 0, :, :] = 1.0
@@ -191,7 +195,8 @@ if __name__ == "__main__":
     low_noise_model.cpu()
     torch.cuda.empty_cache()
 
-    video = tokenizer.decode(samples)
+    with torch.no_grad():
+        video = tokenizer.decode(samples)
 
     to_show.append(video.float().cpu())
 

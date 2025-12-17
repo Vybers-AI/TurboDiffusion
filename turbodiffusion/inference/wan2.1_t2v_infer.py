@@ -58,7 +58,8 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     log.info(f"Computing embedding for prompt: {args.prompt}")
-    text_emb = get_umt5_embedding(checkpoint_path=args.text_encoder_path, prompts=args.prompt).to(**tensor_kwargs)
+    with torch.no_grad():
+        text_emb = get_umt5_embedding(checkpoint_path=args.text_encoder_path, prompts=args.prompt).to(**tensor_kwargs)
     clear_umt5_memory()
 
     log.info(f"Loading DiT model from {args.dit_path}")
@@ -126,7 +127,8 @@ if __name__ == "__main__":
     net.cpu()
     torch.cuda.empty_cache()
 
-    video = tokenizer.decode(samples)
+    with torch.no_grad():
+        video = tokenizer.decode(samples)
 
     to_show.append(video.float().cpu())
 
