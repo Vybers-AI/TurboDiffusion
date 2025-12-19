@@ -7,7 +7,7 @@
 This repository provides the official implementation of **TurboDiffusion**, a video generation acceleration framework that can speed up end-to-end diffusion generation by $100 \sim 200\times$ on a single RTX 5090, while maintaining video quality.   
 TurboDiffusion primarily uses [SageAttention](https://github.com/thu-ml/SageAttention), [SLA (Sparse-Linear Attention)](https://github.com/thu-ml/SLA) for attention acceleration, and [rCM](https://github.com/NVlabs/rcm) for timestep distillation.
 
-Paper: [TurboDiffusion: Accelerating Video Diffusion Models by 100--200 Times](https://jt-zhang.github.io/files/TurboDiffusion_Technical_Report.pdf)
+Paper: [TurboDiffusion: Accelerating Video Diffusion Models by 100-200 Times](https://jt-zhang.github.io/files/TurboDiffusion_Technical_Report.pdf)
 
 **Note**: the checkpoints and paper are not finalized, and will be updated later to improve quality.
 
@@ -279,6 +279,20 @@ We evaluate video generation on **a single RTX 5090 GPU**. The E2E Time refers t
 <tr>
 <td align="center" style="border: 2px solid #000; padding: 10px;">
 <div style="font-size: 1.1em;">Original, E2E Time: 184s</div>
+<div><img src="assets/videos/original/1.3B/5.gif" width="249"/></div>
+</td>
+<td align="center" style="border: 2px solid #000; padding: 10px;">
+<div style="font-size: 1.1em;">FastVideo, E2E Time: 5.3s</div>
+<div><img src="assets/videos/fastvideo/video_1.3B/5.gif" width="249"/></div>
+</td>
+<td align="center" style="border: 2px solid #000; padding: 10px;">
+<div style="font-size: 1.1em;">TurboDiffusion, E2E Time: <b>1.9s</b></div>
+<div><img src="assets/videos/turbodiffusion/1.3B/5.gif" width="249"/></div>
+</td>
+</tr>
+<tr>
+<td align="center" style="border: 2px solid #000; padding: 10px;">
+<div style="font-size: 1.1em;">Original, E2E Time: 184s</div>
 <div><img src="assets/videos/original/1.3B/0.gif" width="249"/></div>
 </td>
 <td align="center" style="border: 2px solid #000; padding: 10px;">
@@ -316,20 +330,6 @@ We evaluate video generation on **a single RTX 5090 GPU**. The E2E Time refers t
 <td align="center" style="border: 2px solid #000; padding: 10px;">
 <div style="font-size: 1.1em;">TurboDiffusion, E2E Time: <b>1.9s</b></div>
 <div><img src="assets/videos/turbodiffusion/1.3B/2.gif" width="249"/></div>
-</td>
-</tr>
-<tr>
-<td align="center" style="border: 2px solid #000; padding: 10px;">
-<div style="font-size: 1.1em;">Original, E2E Time: 184s</div>
-<div><img src="assets/videos/original/1.3B/5.gif" width="249"/></div>
-</td>
-<td align="center" style="border: 2px solid #000; padding: 10px;">
-<div style="font-size: 1.1em;">FastVideo, E2E Time: 5.3s</div>
-<div><img src="assets/videos/fastvideo/video_1.3B/5.gif" width="249"/></div>
-</td>
-<td align="center" style="border: 2px solid #000; padding: 10px;">
-<div style="font-size: 1.1em;">TurboDiffusion, E2E Time: <b>1.9s</b></div>
-<div><img src="assets/videos/turbodiffusion/1.3B/5.gif" width="249"/></div>
 </td>
 </tr>
 <tr>
@@ -585,13 +585,14 @@ We welcome community members to help maintain and extend TurboDiffusion. Welcome
 **If you use this code or find our work valuable, please cite:**
 ```
 @article{zhang2025turbodiffusion,
-  title={TurboDiffusion: Accelerating Video Diffusion Models by 100--200 Times},
+  title={TurboDiffusion: Accelerating Video Diffusion Models by 100-200 Times},
   author={Zhang, Jintao and Zheng, Kaiwen and Jiang, Kai and Wang, Haoxu and Stoica, Ion and Gonzalez, Joseph E. and Chen, Jianfei and Zhu, Jun},
+  journal={arXiv preprint arXiv:2512.16093},
   year={2025}
 }
 
 @software{turbodiffusion2025,
-  title={TurboDiffusion: Accelerating Video Diffusion Models by 100--200 Times},
+  title={TurboDiffusion: Accelerating Video Diffusion Models by 100-200 Times},
   author={The TurboDiffusion Team},
   url={https://github.com/thu-ml/TurboDiffusion},
   year={2025}
