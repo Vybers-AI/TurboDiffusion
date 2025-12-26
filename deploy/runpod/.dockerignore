@@ -1,0 +1,6 @@
+# Keep build context tiny
+**
+!Dockerfile
+!rp_handler.py
+!requirements.txt
+!.dockerignore
