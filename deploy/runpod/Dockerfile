@@ -31,10 +31,10 @@ RUN pip install --no-cache-dir -e . --no-build-isolation
 RUN pip install --no-cache-dir git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
 
 # RunPod deps
-COPY requirements.txt /workspace/requirements.txt
+COPY deploy/runpod/requirements.txt /workspace/requirements.txt
 RUN pip install --no-cache-dir -r /workspace/requirements.txt
 
 # Handler
-COPY rp_handler.py /workspace/rp_handler.py
+COPY deploy/runpod/rp_handler.py /workspace/rp_handler.py
 
 CMD ["python", "-u", "/workspace/rp_handler.py"]
