@@ -1,20 +1,42 @@
 import base64
 import os
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import torch
 import runpod
 from huggingface_hub import hf_hub_download
 
-# ---- Paths inside container ----
-TD_ROOT = Path("/workspace/TurboDiffusion")
-CHECKPOINT_DIR = TD_ROOT / "checkpoints"
-OUTPUT_DIR = TD_ROOT / "output"
+# -----------------------------------------------------------------------------
+# Storage layout
+# -----------------------------------------------------------------------------
+# On RunPod Serverless, a mounted Network Volume appears at /runpod-volume.
+# We persist checkpoints + outputs + temp downloads there to avoid "No space left".
+PERSIST_ROOT = Path(os.environ.get("PERSIST_ROOT", "/runpod-volume"))
 
-CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# TurboDiffusion repo lives in the container image
+TD_ROOT = Path("/workspace/TurboDiffusion")
+
+# Persisted directories (on network volume)
+CHECKPOINT_DIR = PERSIST_ROOT / "checkpoints"
+OUTPUT_DIR = PERSIST_ROOT / "outputs"
+TMP_DIR = PERSIST_ROOT / "tmp"
+
+# Hugging Face caches (also on network volume)
+HF_HOME = Path(os.environ.get("HF_HOME", str(PERSIST_ROOT / "hf")))
+HF_HUB_CACHE = Path(os.environ.get("HF_HUB_CACHE", str(HF_HOME / "hub")))
+TORCH_HOME = Path(os.environ.get("TORCH_HOME", str(PERSIST_ROOT / "torch")))
+
+for p in [CHECKPOINT_DIR, OUTPUT_DIR, TMP_DIR, HF_HOME, HF_HUB_CACHE, TORCH_HOME]:
+    p.mkdir(parents=True, exist_ok=True)
+
+# Force temp files to the network volume (critical for hf_hub_download temp writes)
+os.environ.setdefault("TMPDIR", str(TMP_DIR))
+os.environ.setdefault("HF_HOME", str(HF_HOME))
+os.environ.setdefault("HF_HUB_CACHE", str(HF_HUB_CACHE))
+os.environ.setdefault("TORCH_HOME", str(TORCH_HOME))
 
 # ---- HF repos/files (from TurboDiffusion README) ----
 WAN_BASE_REPO = "Wan-AI/Wan2.1-T2V-1.3B"
@@ -32,35 +54,60 @@ def gpu_mem_gb() -> float:
     return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
 
 
-def download_required_checkpoints(use_quant: bool) -> Path:
+def disk_free_gb(path: Path) -> float:
+    try:
+        total, used, free = shutil.disk_usage(str(path))
+        return free / (1024 ** 3)
+    except Exception:
+        return -1.0
+
+
+def download_required_checkpoints(use_quant: bool) -> Tuple[Path, Path, Path]:
     """
-    Downloads:
+    Downloads (if missing) into CHECKPOINT_DIR on the network volume:
       - Wan2.1_VAE.pth
       - models_t5_umt5-xxl-enc-bf16.pth
       - TurboWan2.1-T2V-14B-720P(.pth or -quant.pth)
-    into ./checkpoints
+    Returns: (dit_path, vae_path, t5_path)
     """
-    hf_hub_download(
-        repo_id=WAN_BASE_REPO,
-        filename=WAN_VAE,
-        local_dir=str(CHECKPOINT_DIR),
-        local_dir_use_symlinks=False,
-    )
-    hf_hub_download(
-        repo_id=WAN_BASE_REPO,
-        filename=UMT5,
-        local_dir=str(CHECKPOINT_DIR),
-        local_dir_use_symlinks=False,
-    )
+    # Ensure tmpdir is on volume even if something resets env
+    os.environ["TMPDIR"] = str(TMP_DIR)
+
+    vae_path = Path(CHECKPOINT_DIR / WAN_VAE)
+    if not vae_path.exists():
+        downloaded = hf_hub_download(
+            repo_id=WAN_BASE_REPO,
+            filename=WAN_VAE,
+            cache_dir=str(HF_HOME),
+            local_dir=str(CHECKPOINT_DIR),
+            local_dir_use_symlinks=False,
+        )
+        vae_path = Path(downloaded)
+
+    t5_path = Path(CHECKPOINT_DIR / UMT5)
+    if not t5_path.exists():
+        downloaded = hf_hub_download(
+            repo_id=WAN_BASE_REPO,
+            filename=UMT5,
+            cache_dir=str(HF_HOME),
+            local_dir=str(CHECKPOINT_DIR),
+            local_dir_use_symlinks=False,
+        )
+        t5_path = Path(downloaded)
 
     ckpt_name = TURBOWAN_QUANT if use_quant else TURBOWAN_FP
-    ckpt_path = hf_hub_download(
-        repo_id=TURBOWAN_REPO,
-        filename=ckpt_name,
-        local_dir=str(CHECKPOINT_DIR),
-        local_dir_use_symlinks=False,
-    )
-    return Path(ckpt_path)
+    dit_path = Path(CHECKPOINT_DIR / ckpt_name)
+    if not dit_path.exists():
+        downloaded = hf_hub_download(
+            repo_id=TURBOWAN_REPO,
+            filename=ckpt_name,
+            cache_dir=str(HF_HOME),
+            local_dir=str(CHECKPOINT_DIR),
+            local_dir_use_symlinks=False,
+        )
+        dit_path = Path(downloaded)
+
+    return dit_path, vae_path, t5_path
 
 
 def run_inference(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -69,20 +116,43 @@ def run_inference(args: Dict[str, Any]) -> Dict[str, Any]:
     num_frames = int(args.get("num_frames", 81))
     aspect_ratio = args.get("aspect_ratio", "16:9")
     seed = int(args.get("seed", 0))
-    sla_topk = float(args.get("sla_topk", 0.15))       # README recommends ~0.15 for quality
+    sla_topk = float(args.get("sla_topk", 0.15))       # README suggests ~0.15 for quality
     attention_type = args.get("attention_type", "sagesla")  # original|sla|sagesla
 
-    # Decide quant vs unquant
-    # README rule: >40GB VRAM => unquant (no --quant_linear); else quant + --quant_linear
+    # Decide quant vs unquant:
+    # Rule-of-thumb: <40GB VRAM => quant (add --quant_linear), else unquant
     force_quant = args.get("force_quant", None)
     if force_quant is None:
         use_quant = gpu_mem_gb() < 40.0
     else:
         use_quant = bool(force_quant)
 
-    ckpt_path = download_required_checkpoints(use_quant=use_quant)
+    # Helpful debug info for disk issues
+    pre_disk = {
+        "free_root_gb": round(disk_free_gb(Path("/")), 2),
+        "free_tmp_gb": round(disk_free_gb(Path("/tmp")), 2),
+        "free_persist_gb": round(disk_free_gb(PERSIST_ROOT), 2),
+        "persist_root": str(PERSIST_ROOT),
+        "checkpoint_dir": str(CHECKPOINT_DIR),
+        "tmpdir": os.environ.get("TMPDIR", ""),
+        "hf_home": os.environ.get("HF_HOME", ""),
+        "hf_hub_cache": os.environ.get("HF_HUB_CACHE", ""),
+    }
 
-    out_name = args.get("save_name", "generated_video.mp4")
+    try:
+        dit_path, vae_path, t5_path = download_required_checkpoints(use_quant=use_quant)
+    except Exception as e:
+        return {
+            "ok": False,
+            "stage": "download_checkpoints",
+            "error_type": str(type(e)),
+            "error_message": str(e),
+            "use_quant": use_quant,
+            "gpu_mem_gb": round(gpu_mem_gb(), 2),
+            "disk": pre_disk,
+        }
+
+    out_name = args.get("save_name", f"generated_video_seed{seed}.mp4")
     save_path = OUTPUT_DIR / out_name
     if save_path.exists():
         save_path.unlink()
@@ -95,7 +165,9 @@ def run_inference(args: Dict[str, Any]) -> Dict[str, Any]:
         "python3",
         "turbodiffusion/inference/wan2.1_t2v_infer.py",
         "--model", "Wan2.1-14B",
-        "--dit_path", str(ckpt_path),
+        "--dit_path", str(dit_path),
+        "--vae_path", str(vae_path),
+        "--text_encoder_path", str(t5_path),
         "--resolution", "720p",
         "--prompt", prompt,
         "--num_samples", "1",
@@ -122,11 +194,14 @@ def run_inference(args: Dict[str, Any]) -> Dict[str, Any]:
     if proc.returncode != 0 or not save_path.exists():
         return {
             "ok": False,
+            "stage": "inference",
             "use_quant": use_quant,
             "gpu_mem_gb": round(gpu_mem_gb(), 2),
-            "log_tail": proc.stdout[-6000:],
+            "disk": pre_disk,
+            "log_tail": proc.stdout[-8000:],
         }
 
+    # Base64 return works for MVP but can get large; consider uploading and returning a URL later.
     video_b64 = base64.b64encode(save_path.read_bytes()).decode("utf-8")
     return {
         "ok": True,
@@ -134,6 +209,7 @@ def run_inference(args: Dict[str, Any]) -> Dict[str, Any]:
         "gpu_mem_gb": round(gpu_mem_gb(), 2),
         "video_mime": "video/mp4",
         "video_base64": video_b64,
+        "disk": pre_disk,
         "log_tail": proc.stdout[-2000:],
     }
 
