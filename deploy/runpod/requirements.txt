@@ -8,3 +8,4 @@ accelerate>=0.34.0,<1
 # Common runtime deps
 safetensors==0.4.5
 opencv-python-headless==4.10.0.84
+
