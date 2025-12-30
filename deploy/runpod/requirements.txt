@@ -1,11 +1,5 @@
 runpod==1.7.13
-
-# HF stack (keep hub/transformers compatible)
-huggingface-hub>=0.34.0,<1.0
-transformers>=4.45.0,<5
-accelerate>=0.34.0,<1
-
-# Common runtime deps
 safetensors==0.4.5
 opencv-python-headless==4.10.0.84
-
+huggingface-hub>=0.34.0,<1.0
+transformers>=4.45.0
