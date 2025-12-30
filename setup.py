@@ -1,6 +1,5 @@
-""" 
+"""
 Copyright (c) 2025 by TurboDiffusion team.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 
 Citation (please cite if you use this code):
@@ -13,6 +12,7 @@ Citation (please cite if you use this code):
 }
 """
 
+import os
 from pathlib import Path
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
@@ -37,25 +37,47 @@ nvcc_flags = [
     "-DCUTLASS_DEBUG_TRACE_LEVEL=0",
     "-DNDEBUG",
     "-Xcompiler",
-    "-fPIC"
+    "-fPIC",
 ]
 
-cc_flag = [
-    "-gencode", "arch=compute_120a,code=sm_120a", 
-    "-gencode", "arch=compute_90,code=sm_90",
-    "-gencode", "arch=compute_89,code=sm_89",
-    "-gencode", "arch=compute_80,code=sm_80"
-]
+def _parse_arch_list() -> list[str]:
+    """
+    Arch list can be overridden by env var TURBODIFFUSION_CUDA_ARCHS.
+    Examples:
+      TURBODIFFUSION_CUDA_ARCHS="120,120a,90,89,86,80"
+      TURBODIFFUSION_CUDA_ARCHS="120"
+    Default favors RTX 5090 serverless: 120 + 120a + a few common fallbacks.
+    """
+    raw = os.environ.get("TURBODIFFUSION_CUDA_ARCHS", "120,120a,90,89,86,80")
+    archs = [a.strip() for a in raw.split(",") if a.strip()]
+    return archs
+
+def _gencode_flags(archs: list[str]) -> list[str]:
+    flags = []
+    for a in archs:
+        # allow "120a" style and normal ints
+        if a.endswith("a"):
+            base = a[:-1]
+            flags += ["-gencode", f"arch=compute_{base}a,code=sm_{base}a"]
+            # also emit PTX for forward-compat
+            flags += ["-gencode", f"arch=compute_{base}a,code=compute_{base}a"]
+        else:
+            flags += ["-gencode", f"arch=compute_{a},code=sm_{a}"]
+            # also emit PTX for forward-compat
+            flags += ["-gencode", f"arch=compute_{a},code=compute_{a}"]
+    return flags
+
+cc_flag = _gencode_flags(_parse_arch_list())
 
 ext_modules = [
     CUDAExtension(
         name="turbo_diffusion_ops",
         sources=[
             "turbodiffusion/ops/bindings.cpp",
-            "turbodiffusion/ops/quant/quant.cu", 
+            "turbodiffusion/ops/quant/quant.cu",
             "turbodiffusion/ops/norm/rmsnorm.cu",
             "turbodiffusion/ops/norm/layernorm.cu",
-            "turbodiffusion/ops/gemm/gemm.cu"
+            "turbodiffusion/ops/gemm/gemm.cu",
         ],
         extra_compile_args={
             "cxx": ["-O3", "-std=c++17"],
@@ -64,16 +86,14 @@ ext_modules = [
         include_dirs=[
             cutlass_dir / "include",
             cutlass_dir / "tools" / "util" / "include",
-            ops_dir 
+            ops_dir,
         ],
         libraries=["cuda"],
     )
 ]
 
 setup(
-    packages=find_packages(
-        exclude=("build", "csrc", "include", "tests", "dist", "docs", "benchmarks")
-    ),
+    packages=find_packages(exclude=("build", "csrc", "include", "tests", "dist", "docs", "benchmarks")),
     ext_modules=ext_modules,
     cmdclass={"build_ext": BuildExtension},
 )
