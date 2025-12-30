@@ -38,3 +38,6 @@ RUN pip install --no-cache-dir -r /workspace/requirements.txt
 COPY deploy/runpod/rp_handler.py /workspace/rp_handler.py
 
 CMD ["python", "-u", "/workspace/rp_handler.py"]
+
+# Fix HF dependency mismatch required by transformers
+RUN pip install --no-cache-dir -U "huggingface-hub>=0.34.0,<1.0" "transformers>=4.45.0"
