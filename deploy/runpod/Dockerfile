@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m pip install -U pip setuptools wheel
 
 # Optional: compile only for common RunPod GPUs (A100=8.0, L40S=8.9, H100=9.0)
-ENV TORCH_CUDA_ARCH_LIST="8.0;8.9;9.0"
+ENV TORCH_CUDA_ARCH_LIST="12.0;12.0a+PTX"
 
 # HF cache dirs (mount a volume to /models later if you want)
 ENV HF_HOME=/models/hf
@@ -22,7 +22,7 @@ WORKDIR /workspace/TurboDiffusion
 
 # Patch setup.py to remove sm_120a which can break builds on builders without that nvcc support
 # (Keep this unless you're specifically targeting Blackwell on the build environment)
-RUN sed -i '/compute_120a,code=sm_120a/d' setup.py
+# RUN sed -i '/compute_120a,code=sm_120a/d' setup.py
 
 # Install TurboDiffusion (builds CUDA extension)
 RUN pip install --no-cache-dir -e . --no-build-isolation
